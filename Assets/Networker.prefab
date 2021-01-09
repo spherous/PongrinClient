@@ -43,6 +43,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 679e802f8be8c704e9631f7df4631fc7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  serverIP: 127.0.0.1
+  serverIP: 142.11.199.204
   port: 1234
   message: Hello World!
