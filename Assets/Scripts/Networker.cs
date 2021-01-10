@@ -66,5 +66,6 @@ public class Networker : MonoBehaviour
         client.Close();
         Debug.Log("Sucessfully Disconnected.");
         SceneManager.LoadScene("Connection Scene", LoadSceneMode.Single);
+        Destroy(this.gameObject);
     }
 }
