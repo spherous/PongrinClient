@@ -18,7 +18,7 @@ public class SendMessageButton : MonoBehaviour
     {
         if(networker != null)
         {
-            networker.MessageServer("Hello Server!");
+            networker.EncodeAndMessageServer("Hello Server!");
         }
         else
             Debug.Log("Cannot find networker.");

@@ -43,15 +43,15 @@ public class Networker : MonoBehaviour
         Networker networker = (Networker)ar.AsyncState;
         try {
             networker.client.EndConnect(ar);
+            networker.stream = networker.client.GetStream();
+            networker.readBuffer = new byte[256];
+            networker.stream.BeginRead(networker.readBuffer, 0, 256, new AsyncCallback(RecieveMessage), networker);
         } catch (Exception e) {
             Debug.Log($"Failed to connect with error:\n{e}");
             return;
         }
-        networker.stream = networker.client.GetStream();
         Debug.Log($"Sucessfully connected.");
         networker.actions.Enqueue(() => SceneManager.LoadScene("Lobby", LoadSceneMode.Single));
-        networker.readBuffer = new byte[256];
-        networker.stream.BeginRead(networker.readBuffer, 0, 256, new AsyncCallback(RecieveMessage), networker);
     }
 
     public void Disconnect()
@@ -64,19 +64,38 @@ public class Networker : MonoBehaviour
         Destroy(this.gameObject);
     }
 
-    public void MessageServer(string message)
+    public void EncodeAndMessageServer(string message)
     {
-        Debug.Log($"Sending message: {message} to server.");
-        byte[] writeBuffer = System.Text.Encoding.ASCII.GetBytes(message);
+        Debug.Log($"Sending message: {message}");
+
+        // byte[] writeBuffer = message.ObjectToByteArray();
+        byte[] data = System.Text.Encoding.ASCII.GetBytes(message);
         
+        if(data.Length > byte.MaxValue)
+            throw new Exception("Too long.");
+
+        List<byte> metadata = new List<byte>();
+        metadata.Add((byte)MessageType.Short_String);
+        metadata.Add((byte)data.Length);
+        metadata.AddRange(data);
+
+        MessageServer(metadata.ToArray());
+    }
+
+    private void MessageServer(byte[] data)
+    {
         lock(lockObj)
         {
             if(sending)
-                writeQueue.Enqueue(writeBuffer);
+                writeQueue.Enqueue(data);
             else
             {
                 sending = true;
-                stream.BeginWrite(writeBuffer, 0, writeBuffer.GetLength(0), new AsyncCallback(SendMessage), this);
+                try {
+                    stream.BeginWrite(data, 0, data.GetLength(0), new AsyncCallback(SendMessage), this);
+                } catch (Exception e) {
+                    Debug.Log($"Failed to write to socket:\n{e}");
+                }
             }
         }
     }
@@ -84,41 +103,56 @@ public class Networker : MonoBehaviour
     private void SendMessage(IAsyncResult ar)
     {
         Networker networker = (Networker)ar.AsyncState;
-        networker.stream.EndWrite(ar);
-        Debug.Log("Message sent.");
-        
-        lock(lockObj)
-        {
-            switch(networker.writeQueue.Count)
+        try{
+            networker.stream.EndWrite(ar);
+            Debug.Log("Message sent.");
+            
+            lock(lockObj)
             {
-                case 0:
-                    networker.sending = false;
-                    break;
-                default:
-                    if(networker.writeQueue.TryDequeue(out byte[] writeBuffer))
-                    {
-                        networker.sending = true;
-                        stream.BeginWrite(writeBuffer, 0, writeBuffer.GetLength(0), new AsyncCallback(SendMessage), this);
+                switch(networker.writeQueue.Count)
+                {
+                    case 0:
+                        networker.sending = false;
+                        break;
+                    default:
+                        if(networker.writeQueue.TryDequeue(out byte[] writeBuffer))
+                        {
+                            networker.sending = true;
+                            stream.BeginWrite(writeBuffer, 0, writeBuffer.GetLength(0), new AsyncCallback(SendMessage), this);
+                            return;
+                        }
+                        networker.sending = false;
                         return;
-                    }
-                    networker.sending = false;
-                    return;
+                }
             }
+        } catch (Exception e) {
+            Debug.Log($"Failed to write to socket:\n{e}");
         }
     }
      
     private void RecieveMessage(IAsyncResult ar)
     {
         Networker networker = (Networker)ar.AsyncState;
-        int bytesRead = networker.stream.EndRead(ar);
+        try{
+            int bytesRead = networker.stream.EndRead(ar);
+            if(bytesRead == 0)
+            {
+                networker.stream.BeginRead(networker.readBuffer, 0, 256, new AsyncCallback(RecieveMessage), networker);
+                return;
+            }
 
-        if(bytesRead == 0)
-        {
-            networker.stream.BeginRead(networker.readBuffer, 0, 256, new AsyncCallback(RecieveMessage), networker);
-            return;
+            // string responseData = networker.readBuffer.ByteArrayToObject<string>();
+            MessageType type = (MessageType)networker.readBuffer[0];
+            int messageLength = networker.readBuffer[1];
+
+            // byte[] buf = new byte[messageLength];
+            // for(int i = 2; i < bytesRead; i++)
+            //     buf[i-2] = networker.readBuffer[i];
+
+            string responseData = System.Text.Encoding.ASCII.GetString(networker.readBuffer, 2, messageLength);
+            Debug.Log($"Response from server: {responseData}");
+        } catch (Exception e) {
+            Debug.Log($"Failed to read from socket:\n{e}");
         }
-
-        string responseData = System.Text.Encoding.ASCII.GetString(networker.readBuffer, 0, bytesRead);
-        Debug.Log($"Response from server: {responseData}");
     }
 }
