@@ -89,19 +89,19 @@ public class Networker : MonoBehaviour
         
         lock(lockObj)
         {
-            switch(writeQueue.Count)
+            switch(networker.writeQueue.Count)
             {
                 case 0:
-                    sending = false;
+                    networker.sending = false;
                     break;
                 default:
                     if(networker.writeQueue.TryDequeue(out byte[] writeBuffer))
                     {
-                        sending = true;
+                        networker.sending = true;
                         stream.BeginWrite(writeBuffer, 0, writeBuffer.GetLength(0), new AsyncCallback(SendMessage), this);
                         return;
                     }
-                    sending = false;
+                    networker.sending = false;
                     return;
             }
         }
